@@ -20,7 +20,7 @@ type MongoInstance struct {
 }
 
 type Employee struct {
-	ID     string  `json:"id,omitempty" bson:"_id, omitempty"` // bson is for mongodb
+	ID     string  `json:"id,omitempty" bson:"_id,omitempty"` // bson is for mongodb
 	Name   string  `json:"name"`
 	Salary float64 `json:"salary"`
 	Age    float64 `json:"age"`
@@ -102,7 +102,7 @@ func main() {
 			return c.SendStatus(400)
 		}
 		var employee Employee
-		if err := c.BodyParser(employee); err != nil {
+		if err := c.BodyParser(&employee); err != nil {
 			return c.Status(400).SendString(err.Error())
 		}
 
@@ -121,7 +121,7 @@ func main() {
 		err = collection.FindOneAndUpdate(c.Context(), query, update).Err()
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
-				return c.SendStatus(400) // 400 is for not found :)
+				return c.SendStatus(404) // 404 is for not found :)
 			}
 			return c.SendStatus(500)
 		}
@@ -137,8 +137,26 @@ func main() {
 	})
 
 	app.Delete("/employee/:id", func(c *fiber.Ctx) error {
+		idParam := c.Params("id")
+		employeeId, err := primitive.ObjectIDFromHex(idParam)
+		if err != nil {
+			return c.SendStatus(400)
+		}
+
+		query := bson.D{{Key: "_id", Value: employeeId}}
+		deleteResult, err := mg.Db.Collection("employees").DeleteOne(c.Context(), query)
+		if err != nil {
+			return c.SendStatus(500)
+		}
+		if deleteResult.DeletedCount < 1 {
+			return c.SendStatus(404)
+		}
+
+		return c.Status(200).JSON("record deleted")
 
 	})
+
+	log.Fatal(app.Listen(":3000"))
 	// defer func() { // postpone the execution of a function until the surrounding function has been executed
 	// 	if err = client.Disconnect(context.TODO()); err != nil {
 	// 		panic(err)
