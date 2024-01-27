@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -73,9 +74,71 @@ func main() {
 		}
 		return c.JSON(employees)
 	})
-	app.Post("/employee")
-	app.Put("/employee/:id")
-	app.Delete("/employee/:id")
+	app.Post("/employee", func(c *fiber.Ctx) error {
+		collection := mg.Db.Collection("employees")
+		employee := new(Employee)
+		if err := c.BodyParser(employee); err != nil {
+			return c.Status(400).SendString(err.Error())
+		}
+		employee.ID = ""
+		insertResult, err := collection.InsertOne(c.Context(), employee)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		filter := bson.D{{Key: "_id", Value: insertResult.InsertedID}}
+		cursor := collection.FindOne(c.Context(), filter)
+		createdEmployee := &Employee{}
+		cursor.Decode(createdEmployee)
+
+		return c.Status(201).JSON(createdEmployee)
+
+	})
+	app.Put("/employee/:id", func(c *fiber.Ctx) error {
+		collection := mg.Db.Collection("employees")
+		idParam := c.Params("id")
+		employeeId, err := primitive.ObjectIDFromHex(idParam)
+		if err != nil {
+			return c.SendStatus(400)
+		}
+		var employee Employee
+		if err := c.BodyParser(employee); err != nil {
+			return c.Status(400).SendString(err.Error())
+		}
+
+		query := bson.D{{Key: "_id", Value: employeeId}}
+		update := bson.D{
+			{
+				Key: "$set",
+				Value: bson.D{
+					{Key: "name", Value: employee.Name},
+					{Key: "age", Value: employee.Age},
+					{Key: "salary", Value: employee.Salary},
+				},
+			},
+		}
+
+		err = collection.FindOneAndUpdate(c.Context(), query, update).Err()
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.SendStatus(400) // 400 is for not found :)
+			}
+			return c.SendStatus(500)
+		}
+
+		employee.ID = idParam
+		return c.Status(200).JSON(employee)
+
+		// cursor := collection.FindOne(c.Context(), query)
+		// updatedEmployee := &Employee{}
+		// cursor.Decode(updatedEmployee)
+
+		// return c.Status(201).JSON(updatedEmployee)
+	})
+
+	app.Delete("/employee/:id", func(c *fiber.Ctx) error {
+
+	})
 	// defer func() { // postpone the execution of a function until the surrounding function has been executed
 	// 	if err = client.Disconnect(context.TODO()); err != nil {
 	// 		panic(err)
