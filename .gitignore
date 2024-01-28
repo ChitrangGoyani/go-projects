@@ -1,1 +1,2 @@
 go-mongo-hrms/.env
+go-postgres-gorm/.env
